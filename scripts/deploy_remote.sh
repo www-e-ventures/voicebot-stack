@@ -104,9 +104,15 @@ fi
 echo "[remote] Rebuilding & restarting FastAPI container…"
 cd "${APP_ROOT}"
 # Compose v2 plugin is 'docker compose' (space), not 'docker-compose'
+#sudo /usr/bin/docker compose pull || true
+#sudo /usr/bin/docker compose build --no-cache chatbot-api
+#sudo /usr/bin/docker compose up -d
+
 sudo /usr/bin/docker compose pull || true
-sudo /usr/bin/docker compose build --no-cache chatbot-api
+# build ALL services (no name → no “no such service” issue)
+sudo /usr/bin/docker compose build --no-cache
 sudo /usr/bin/docker compose up -d
+
 
 echo "[remote] Health checks…"
 sleep 2
