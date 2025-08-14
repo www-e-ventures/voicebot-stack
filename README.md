@@ -27,14 +27,14 @@ http://localhost:8000/demo
 ```
 
 ## Notes
-- This MVP uses **push-to-talk**. For streaming/barge-in, extend `/transcribe` to WebSocket and add VAD.
+- **push-to-talk**. For streaming/barge-in, extend `/transcribe` to WebSocket and add VAD.
 - STT: `faster-whisper` (size via `STT_MODEL_SIZE` in .env).
-- LLM: local with `llama-cpp-python`; fallback to OpenAI when enabled.
+- LLM: local with `llama-cpp-python`; 
 - TTS: Piper in a sidecar; the API calls it via `docker exec` for simplicity.
 
 ## Next steps
-- Replace push-to-talk with WebSocket streaming + VAD (Silero).
-- Swap Piper with XTTS-v2 (GPU) for cloned voices, or wire to ElevenLabs/PlayHT.
+- Replace push-to-talk with Laravel Livewire (like WebSocket streaming )
+- Swap Piper with XTTS-v2 (GPU) for cloned voices, as oppposed to ElevenLabs/PlayHT.
 - Add RAG (SQLite + FAISS) and long-term memory.
 - Persist transcripts in /data and build “Autobiography Mode”.
 
