@@ -14,7 +14,9 @@ Route::get('/voicebot/demo', function () {
     return redirect($api . '/demo');
 });
 
-
+Route::get('/voicebot/tests', function () {
+    return view('voicebot-tests');
+});
 
 
 Route::get('/', function () {
