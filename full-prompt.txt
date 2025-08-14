@@ -1,7 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # - docker-compose.yml (FastAPI gateway + Piper TTS)
 # - server/app (FastAPI: STT via faster-whisper, LLM via llama.cpp or OpenAI, TTS proxy)
-# - web/ (Minimal HTML/JS client with push-to-talk, WAV encoder)
+# - web/ (quick HTML/JS client with push-to-talk, WAV encoder)
 # - scripts/ (helpers to fetch models)
 # - .env.example (toggle local vs cloud)
 # ─────────────────────────────────────────────────────────────────────────────
+#fastapi direct (pass-through)
+#but also laravel routed (for auth, user mgmt, etc)
