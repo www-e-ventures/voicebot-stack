@@ -1,0 +1,50 @@
+# ---- General
+.DS_Store
+*.log
+.env
+.env.*.local
+*.swp
+*.swo
+
+# ---- Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.venv/
+venv/
+pip-wheel-metadata/
+
+# ---- Node (if you add any front-end later)
+node_modules/
+
+# ---- Docker
+*.pid
+docker-data/
+*.tar
+
+# ---- App data
+data/
+# Keep a placeholder so the folder exists
+!data/.keep
+
+# ---- Models (large files) — ignore by default
+models/**
+# But keep folder structure and tiny readme/keeps
+!models/.keep
+!models/README.md
+!models/piper/
+!models/llm/
+models/piper/*
+!models/piper/.keep
+models/llm/*
+!models/llm/.keep
+
+# ---- Laravel (we'll add soon)
+webapp/vendor/
+webapp/node_modules/
+webapp/storage/
+webapp/bootstrap/cache/
+webapp/.env

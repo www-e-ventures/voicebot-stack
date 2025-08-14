@@ -1,0 +1,137 @@
+# =========================
+# server/app/static/index.html (served at GET /demo)
+# =========================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Voice Chatbot Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    .row { display:flex; gap:1rem; align-items:center; }
+    button { padding: .6rem 1rem; font-weight:600; }
+    textarea { width:100%; height:6rem; }
+    audio { width: 100%; margin-top: .5rem; }
+  </style>
+</head>
+<body>
+  <h1>Local Voice Chatbot (Push-to-talk MVP)</h1>
+  <div class="row">
+    <button id="recBtn">🎙️ Hold to speak</button>
+    <span id="status">idle</span>
+  </div>
+
+  <h3>Transcript</h3>
+  <textarea id="transcript" readonly></textarea>
+
+  <h3>Assistant</h3>
+  <textarea id="reply" readonly></textarea>
+  <audio id="player" controls></audio>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const recBtn = document.getElementById('recBtn');
+    const transcriptEl = document.getElementById('transcript');
+    const replyEl = document.getElementById('reply');
+    const player = document.getElementById('player');
+
+    let mediaStream, audioCtx, processor, source;
+
+    async function startAudio() {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      source = audioCtx.createMediaStreamSource(mediaStream);
+      processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      const chunks = [];
+      processor.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0);
+        chunks.push(new Float32Array(input));
+      };
+      processor.onended = () => {};
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      return {
+        stopAndGetWav: async () => {
+          processor.disconnect();
+          source.disconnect();
+          audioCtx.close();
+          const wav = floatTo16BitWav(concatFloat32(chunks), 16000);
+          return new Blob([wav], { type: 'audio/wav' });
+        }
+      };
+    }
+
+    function concatFloat32(chunks) {
+      let length = 0; chunks.forEach(c => length += c.length);
+      const out = new Float32Array(length);
+      let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; }
+      return out;
+    }
+
+    function floatTo16BitWav(float32Array, sampleRate) {
+      const buffer = new ArrayBuffer(44 + float32Array.length * 2);
+      const view = new DataView(buffer);
+      const writeString = (off, s) => { for (let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + float32Array.length * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true); // PCM chunk size
+      view.setUint16(20, 1, true);  // PCM format
+      view.setUint16(22, 1, true);  // mono
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true); // byte rate
+      view.setUint16(32, 2, true); // block align
+      view.setUint16(34, 16, true); // bits per sample
+      writeString(36, 'data');
+      view.setUint32(40, float32Array.length * 2, true);
+      // write samples
+      let offset = 44;
+      for (let i=0; i<float32Array.length; i++, offset+=2) {
+        let s = Math.max(-1, Math.min(1, float32Array[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      }
+      return buffer;
+    }
+
+    recBtn.addEventListener('mousedown', async () => {
+      statusEl.textContent = 'recording…';
+      recBtn.disabled = true;
+      window._rec = await startAudio();
+    });
+    recBtn.addEventListener('mouseup', async () => {
+      statusEl.textContent = 'processing…';
+      const wav = await window._rec.stopAndGetWav();
+      await handleTurn(wav);
+      recBtn.disabled = false;
+      statusEl.textContent = 'idle';
+    });
+
+    async function handleTurn(wavBlob) {
+      // 1) STT
+      const form1 = new FormData();
+      form1.append('file', wavBlob, 'audio.wav');
+      const stt = await fetch('/transcribe', { method:'POST', body: form1 }).then(r => r.json());
+      transcriptEl.value = stt.text || '';
+
+      // 2) Chat
+      const form2 = new FormData();
+      form2.append('text', stt.text || '');
+      form2.append('history', JSON.stringify([]));
+      const ch = await fetch('/chat', { method:'POST', body: form2 }).then(r => r.json());
+      replyEl.value = ch.reply || '';
+
+      // 3) TTS
+      const form3 = new FormData();
+      form3.append('text', ch.reply || '');
+      const ttsResp = await fetch('/tts', { method:'POST', body: form3 });
+      const buf = await ttsResp.arrayBuffer();
+      const blob = new Blob([buf], { type: 'audio/wav' });
+      player.src = URL.createObjectURL(blob);
+      await player.play();
+    }
+  </script>
+</body>
+</html>
+

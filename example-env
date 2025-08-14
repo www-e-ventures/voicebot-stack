@@ -1,0 +1,29 @@
+# =========================
+# .env.example (copy to .env and edit)
+# =========================
+# Toggle engines
+USE_LOCAL_LLM=true
+USE_OPENAI_FALLBACK=false
+USE_LOCAL_STT=true
+USE_CLOUD_STT=false
+
+# LLM: local (llama.cpp) model
+LLM_MODEL_PATH=/models/llm/qwen2-7b-instruct-q4_k_m.gguf
+LLM_CTX=4096
+LLM_GPU_LAYERS=0
+
+# OpenAI fallback (optional)
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+
+# Faster-Whisper (STT)
+STT_MODEL_SIZE=small
+STT_DEVICE=auto           # "cpu" or "cuda"
+STT_COMPUTE_TYPE=int8     # or float16 for GPU
+
+# Piper voice model
+PIPER_MODEL=en_US-amy-low.onnx
+
+# CORS for web client
+CORS_ORIGINS=http://localhost:5173,http://localhost:8080,http://127.0.0.1:8000
+
