@@ -1,90 +1,168 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Voicebot – API Smoke Tests</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voicebot — Tests</title>
     <style>
-        :root { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-        body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-        h1 { margin-bottom: .25rem; }
-        .grid { display:grid; gap:1rem; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); }
-        .card { border:1px solid #e5e7eb; border-radius:12px; padding:1rem; }
-        button { padding:.6rem .9rem; border-radius:10px; border:1px solid #e5e7eb; cursor:pointer; }
-        button:disabled { opacity:.5; cursor:not-allowed; }
-        input[type="text"] { width:100%; padding:.6rem .8rem; border:1px solid #e5e7eb; border-radius:10px; }
-        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space:pre-wrap; word-break:break-word; }
-        .pill { font-size:.75rem; padding:.2rem .5rem; border-radius:999px; background:#f3f4f6; }
-        .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
-        audio { width:100%; margin-top:.5rem; }
-        .warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; padding:.5rem .75rem; border-radius:10px; }
-        .ok { color:#065f46; }
-        .err { color:#7f1d1d; }
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+        h1 { margin: 0 0 12px; }
+        .row { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+        button { padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+        button.primary { background: #0ea5e9; color: white; }
+        button.warning { background: #f59e0b; color: #111; }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin: 12px 0; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; background: #f8fafc; padding: 8px; border-radius: 8px; }
+        .pill { padding: 2px 8px; border-radius: 999px; background: #e2e8f0; font-size: 12px; margin-left: 8px; }
+        .ok { background: #dcfce7; }
+        .err { background: #fee2e2; }
+        .recording { animation: pulse 1.1s infinite ease-in-out; }
+        @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.05)} 100%{transform:scale(1)} }
     </style>
 </head>
 <body>
-<h1>Voicebot – API Smoke Tests</h1>
-<div class="row">
-    <span class="pill">FastAPI: <span id="fastapiHost">/api/voicebot → 127.0.0.1:8000</span></span>
-    <span class="pill">HTTPS required for mic</span>
-    <a href="/voicebot/demo" style="margin-left:auto">➡ Demo page</a>
-</div>
+<h1>Voicebot Tests <span id="httpsBadge" class="pill">http</span></h1>
 
-<div id="httpsNote" class="warn" style="display:none; margin-top:1rem;">
-    Microphone requires HTTPS (or localhost). We’ll enable SSL next; until then, use the file upload in Transcribe.
-</div>
-
-<div class="grid" style="margin-top:1rem;">
-    <!-- Health -->
-    <div class="card">
-        <h3>1) Health</h3>
-        <p>Checks connectivity Laravel → FastAPI.</p>
-        <button id="btnHealth">Ping /api/voicebot/health</button>
-        <pre id="outHealth" class="mono" style="margin-top:.75rem;"></pre>
+<div class="card">
+    <div class="row">
+        <button id="btnHealth" class="primary">1) Health</button>
+        <button id="btnChat">2) Chat</button>
+        <button id="btnTts">3) TTS (download WAV)</button>
+        <button id="btnTranscribe">4) Transcribe (upload file)</button>
     </div>
 
-    <!-- Chat -->
-    <div class="card">
-        <h3>2) Chat</h3>
-        <p>Send a prompt and show the model reply.</p>
-        <input id="chatText" type="text" value="Say hi in one sentence" />
-        <div class="row" style="margin-top:.5rem;">
-            <button id="btnChat">Send to /api/voicebot/chat</button>
-        </div>
-        <pre id="outChat" class="mono" style="margin-top:.75rem;"></pre>
+    <div class="row">
+        <input id="chatText" type="text" placeholder="Say hi in one sentence" style="flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:8px" />
+        <input id="fileInput" type="file" accept="audio/*" />
     </div>
 
-    <!-- TTS -->
-    <div class="card">
-        <h3>3) TTS</h3>
-        <p>Generate speech → play it here and offer download.</p>
-        <input id="ttsText" type="text" value="Hello from Laravel via FastAPI" />
-        <div class="row" style="margin-top:.5rem;">
-            <button id="btnTts">POST /api/voicebot/tts</button>
-            <a id="dlTts" href="#" download="speech.wav" style="display:none;">Download WAV</a>
-        </div>
-        <audio id="ttsPlayer" controls></audio>
-        <div id="outTts" class="mono" style="margin-top:.75rem;"></div>
-    </div>
-
-    <!-- Transcribe -->
-    <div class="card">
-        <h3>4) Transcribe</h3>
-        <p>Upload a WAV file (16-bit mono, 22,050 Hz) to transcribe.<br>
-            <small>If mic is enabled (HTTPS), use the “Hold to speak” button.</small></p>
-
-        <input id="fileIn" type="file" accept=".wav,audio/wav" />
-        <div class="row" style="margin-top:.5rem;">
-            <button id="btnTranscribe">POST /api/voicebot/transcribe</button>
-        </div>
-
-        <div class="row" style="margin-top:1rem;gap:.75rem;">
-            <button id="btnHold" disabled>🎤 Hold to speak</button>
-            <span id="micState" class="pill">mic: idle</span>
-        </div>
-
-        <pre id="outTrans" class="mono" style="margin-top:.75rem;"></pre>
+    <div class="row">
+        <button id="btnHold" class="warning">🎤 Press & hold to record</button>
+        <span id="recHint" style="align-self:center;color:#64748b">Stops when released (or after 12s)</span>
     </div>
 </div>
-<script src="/js/voicebot-tests.js" defer></script>
 
+<div class="card">
+    <strong>Output</strong>
+    <div id="out" class="mono" style="margin-top:8px">—</div>
+</div>
+
+<script>
+    (() => {
+        const out = (msg, ok=true) => {
+            const el = document.getElementById('out');
+            el.textContent = (typeof msg === 'string') ? msg : JSON.stringify(msg, null, 2);
+            el.className = 'mono ' + (ok ? 'ok' : 'err');
+        };
+
+        // Badge shows whether we are on https (microphone requires https on most browsers)
+        const httpsBadge = document.getElementById('httpsBadge');
+        if (location.protocol === 'https:') { httpsBadge.textContent = 'https'; httpsBadge.classList.add('ok'); }
+
+        // Base helpers
+        const j = async (resp) => { try { return await resp.json(); } catch { return await resp.text(); } };
+        const toBlob = async (resp) => { const b = await resp.blob(); return b; };
+
+        // 1) Health
+        document.getElementById('btnHealth').addEventListener('click', async () => {
+            try {
+                const r = await fetch('/api/voicebot/health', { credentials: 'same-origin' });
+                out(await j(r), r.ok);
+            } catch (e) { out(String(e), false); }
+        });
+
+        // 2) Chat
+        document.getElementById('btnChat').addEventListener('click', async () => {
+            const text = document.getElementById('chatText').value || 'Say hi in one sentence';
+            try {
+                const r = await fetch('/api/voicebot/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ text, history: "[]" })
+                });
+                out(await j(r), r.ok);
+            } catch (e) { out(String(e), false); }
+        });
+
+        // 3) TTS — downloads WAV from Laravel → FastAPI
+        document.getElementById('btnTts').addEventListener('click', async () => {
+            try {
+                const fd = new FormData(); fd.append('text', 'Hello from HTTPS via Laravel');
+                const r = await fetch('/api/voicebot/tts', { method: 'POST', body: fd, credentials: 'same-origin' });
+                if (!r.ok) return out(await r.text(), false);
+                const blob = await toBlob(r);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'voicebot.wav';
+                document.body.appendChild(a); a.click(); a.remove();
+                URL.revokeObjectURL(url);
+                out({ ok: true, info: 'WAV downloaded as voicebot.wav' }, true);
+            } catch (e) { out(String(e), false); }
+        });
+
+        // 4) Transcribe — upload a chosen audio file
+        document.getElementById('btnTranscribe').addEventListener('click', async () => {
+            const f = document.getElementById('fileInput').files?.[0];
+            if (!f) return out('Pick a file first', false);
+            try {
+                const fd = new FormData(); fd.append('file', f, f.name);
+                const r = await fetch('/api/voicebot/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
+                out(await j(r), r.ok);
+            } catch (e) { out(String(e), false); }
+        });
+
+        // 🎤 Press & hold to record → stop on release or after 12s
+        const holdBtn = document.getElementById('btnHold');
+        let mediaRecorder, chunks = [], stopTimer;
+
+        const startRec = async () => {
+            if (mediaRecorder?.state === 'recording') return;
+            try {
+                if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                    return out('Microphone requires HTTPS (or localhost).', false);
+                }
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+                mediaRecorder = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 128000 });
+                chunks = [];
+                mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                    const fd = new FormData();
+                    const filename = 'recording.webm'; // Whisper handles webm/ogg/mp3/wav
+                    fd.append('file', blob, filename);
+                    try {
+                        const r = await fetch('/api/voicebot/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
+                        out(await j(r), r.ok);
+                    } catch (e) { out(String(e), false); }
+                    stream.getTracks().forEach(t => t.stop());
+                };
+                mediaRecorder.start();
+                holdBtn.textContent = '● Recording… release to stop';
+                holdBtn.classList.add('recording');
+                // safety stop after 12s
+                stopTimer = setTimeout(stopRec, 12000);
+            } catch (e) {
+                out('Mic error: ' + String(e), false);
+            }
+        };
+
+        const stopRec = () => {
+            if (!mediaRecorder) return;
+            try { mediaRecorder.state === 'recording' && mediaRecorder.stop(); } catch {}
+            clearTimeout(stopTimer);
+            holdBtn.textContent = '🎤 Press & hold to record';
+            holdBtn.classList.remove('recording');
+        };
+
+        // Pointer events cover mouse + touch + pen
+        holdBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); startRec(); });
+        ['pointerup','pointerleave','pointercancel'].forEach(evt => holdBtn.addEventListener(evt, stopRec));
+        // Escape key also stops
+        window.addEventListener('keydown', (e) => { if (e.key === 'Escape') stopRec(); });
+    })();
+</script>
+</body>
+</html>
