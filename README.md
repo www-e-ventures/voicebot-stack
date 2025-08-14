@@ -14,8 +14,8 @@ bash scripts/get_models.sh   # downloads Piper voice & shows how to fetch GGUF
 ```
 
 Edit `.env`:
-- Set `LLM_MODEL_PATH` to your GGUF file.
-- Optionally set `OPENAI_API_KEY` and `USE_OPENAI_FALLBACK=true`.
+- FULL OFFLINE MODE Set `LLM_MODEL_PATH` to your GGUF file.
+- Optionally FALLBACK set `OPENAI_API_KEY` and `USE_OPENAI_FALLBACK=true`.
 
 ## Run
 ```bash
