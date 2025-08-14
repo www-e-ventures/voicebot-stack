@@ -10,7 +10,7 @@
 ## Setup
 ```bash
 cp .env.example .env
-bash scripts/get_models.sh   # downloads Piper voice & shows how to fetch GGUF
+bash scripts/get_models.sh   # downloads Piper voice & shows how to fetch GGUF binary
 ```
 
 Edit `.env`:
