@@ -48,3 +48,4 @@ webapp/node_modules/
 webapp/storage/
 webapp/bootstrap/cache/
 webapp/.env
+/webapp/laravel_speech.wav

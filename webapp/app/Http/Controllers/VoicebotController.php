@@ -9,76 +9,108 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class VoicebotController extends Controller
 {
     protected string $base;
-
     public function __construct()
     {
-        $this->base = config('services.voicebot.base_url');
+        $this->api = rtrim(config('services.voicebot.api_url', env('VOICEBOT_API_URL', 'http://localhost:8000')), '/');
     }
 
     public function health()
     {
-        $resp = Http::get("{$this->base}/");
-        return response()->json($resp->json(), $resp->status());
+        //safe passthrough to fastapi downstream
+        try {
+            $resp = Http::timeout(10)->get("{$this->api}/");
+            return response()->json($resp->json(), $resp->status());
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage()], 502);
+        }
     }
 
     public function chat(Request $request)
     {
-        $validated = $request->validate([
-            'text' => 'required|string',
-            'history' => 'nullable',
-        ]);
+        $text = (string) $request->input('text', '');
+        $history = (string) $request->input('history', '[]');
 
-        $response = Http::asForm()->post("{$this->base}/chat", [
-            'text' => $validated['text'],
-            'history' => $validated['history'] ?? '[]',
-        ]);
+        if ($text === '') {
+            return response()->json(['error' => 'text is required'], 400);
+        }
 
-        return response()->json($response->json(), $response->status());
+        try {
+            $resp = Http::asForm()->timeout(60)->post("{$this->api}/chat", [
+                'text' => $text,
+                'history' => $history,
+            ]);
+
+            if ($resp->successful()) {
+                return response()->json($resp->json(), 200);
+            }
+            return response()->json(['error' => 'backend error', 'body' => $resp->body()], $resp->status());
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 502);
+        }
     }
 
     public function tts(Request $request)
     {
-        $validated = $request->validate([
-            'text' => 'required|string',
-        ]);
-
-        $downstream = Http::asForm()->withOptions(['stream' => true])
-            ->post("{$this->base}/tts", ['text' => $validated['text']]);
-
-        if ($downstream->failed()) {
-            return response()->json(['error' => 'TTS failed'], 500);
+        $text = (string) $request->input('text', '');
+        if ($text === '') {
+            return response()->json(['error' => 'text is required'], 400);
         }
 
-        //stream audio/wav through
-        return new StreamedResponse(function () use ($downstream) {
-            $downstream->getBody()->rewind();
-            while (! $downstream->getBody()->eof()) {
-                echo $downstream->getBody()->read(8192);
-                @ob_flush(); flush();
+        try {
+
+            $downstream = Http::asMultipart()
+                ->timeout(120)
+                ->withHeaders(['Accept' => 'audio/wav'])
+                ->post("{$this->api}/tts", [
+                    ['name' => 'text', 'contents' => $text],
+                ]);
+
+            if (!$downstream->successful()) {
+                return response()->json([
+                    'error' => 'backend error',
+                    'status' => $downstream->status(),
+                    'body'   => $downstream->body(),
+                ], $downstream->status());
             }
-        }, 200, [
-            'Content-Type' => 'audio/wav',
-            'Cache-Control' => 'no-store',
-        ]);
+
+
+            $body = $downstream->body(); // (string) binary WAV
+            return response($body, 200)
+                ->header('Content-Type', 'audio/wav')
+                ->header('Content-Disposition', 'inline; filename="speech.wav"');
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 502);
+        }
     }
 
     public function transcribe(Request $request)
     {
-        $request->validate([
-            'file' => 'required|file|mimetypes:audio/wav,audio/x-wav',
-        ]);
+
+        if (!$request->hasFile('file')) {
+            return response()->json(['error' => 'file is required (multipart/form-data)'], 400);
+        }
 
         $file = $request->file('file');
+        if (!$file->isValid()) {
+            return response()->json(['error' => 'invalid upload'], 400);
+        }
 
-        $response = Http::asMultipart()->post("{$this->base}/transcribe", [
-            [
-                'name' => 'file',
-                'contents' => fopen($file->getRealPath(), 'r'),
-                'filename' => $file->getClientOriginalName(),
-                'headers' => ['Content-Type' => $file->getMimeType()],
-            ],
-        ]);
+        try {
+            $resp = Http::asMultipart()->timeout(120)->post("{$this->api}/transcribe", [
+                [
+                    'name'     => 'file',
+                    'contents' => fopen($file->getRealPath(), 'r'),
+                    'filename' => $file->getClientOriginalName(),
+                    'headers'  => ['Content-Type' => $file->getMimeType() ?: 'audio/wav'],
+                ],
+            ]);
 
-        return response()->json($response->json(), $response->status());
+            if ($resp->successful()) {
+                return response()->json($resp->json(), 200);
+            }
+            return response()->json(['error' => 'backend error', 'body' => $resp->body()], $resp->status());
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 502);
+        }
     }
 }
