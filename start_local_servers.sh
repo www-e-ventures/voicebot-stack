@@ -1,0 +1,17 @@
+#Voicebot instructions
+
+#CLI Starting point: root of project ( where docker-compose.yml is ! )
+
+#1) Start the local servers
+
+#In one terminal (FastAPI):
+
+# from repo root (where docker-compose.yml is)
+docker compose up -d
+# sanity check
+curl -s http://127.0.0.1:8000/   # -> {"ok":true,"service":"voicebot_api"}
+
+#and in another terminal please do
+cd webapp
+php artisan serve --host=127.0.0.1 --port=9000
+# (keep this running)
