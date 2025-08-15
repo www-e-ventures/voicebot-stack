@@ -49,21 +49,17 @@
 
 <script>
     (() => {
-        // UI helpers
-        const out = (msg, ok = true) => {
+        // ---------- UI helpers ----------
+        const out = (msg, ok=true) => {
             const el = document.getElementById('out');
             el.textContent = (typeof msg === 'string') ? msg : JSON.stringify(msg, null, 2);
             el.className = 'mono ' + (ok ? 'ok' : 'err');
         };
-
-        // HTTPS badge (mic generally needs https or localhost)
         const httpsBadge = document.getElementById('httpsBadge');
         if (location.protocol === 'https:') { httpsBadge.textContent = 'https'; httpsBadge.classList.add('ok'); }
-
-        // Convenience parsers
         const asJSON = async (r) => { try { return await r.json(); } catch { return await r.text(); } };
 
-        // 1) Health
+        // ---------- 1) Health ----------
         document.getElementById('btnHealth').addEventListener('click', async () => {
             try {
                 const r = await fetch('/api/voicebot/health', { credentials: 'same-origin' });
@@ -71,7 +67,7 @@
             } catch (e) { out(String(e), false); }
         });
 
-        // 2) Chat
+        // ---------- 2) Chat ----------
         document.getElementById('btnChat').addEventListener('click', async () => {
             const text = document.getElementById('chatText').value || 'Say hi in one sentence';
             try {
@@ -85,7 +81,7 @@
             } catch (e) { out(String(e), false); }
         });
 
-        // 3) TTS: downloads WAV from Laravel → FastAPI
+        // ---------- 3) TTS (download WAV) ----------
         document.getElementById('btnTts').addEventListener('click', async () => {
             try {
                 const fd = new FormData(); fd.append('text', 'Hello from HTTPS via Laravel');
@@ -101,20 +97,104 @@
             } catch (e) { out(String(e), false); }
         });
 
-        // 4) Transcribe: upload a chosen audio file
+        // ---------- 4) Transcribe (upload file) ----------
         document.getElementById('btnTranscribe').addEventListener('click', async () => {
             const f = document.getElementById('fileInput').files?.[0];
             if (!f) return out('Pick a file first', false);
             try {
                 const fd = new FormData(); fd.append('file', f, f.name);
                 const r = await fetch('/api/voicebot/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
-                out(await asJSON(r), r.ok);
+                const data = await asJSON(r);
+                out(data, r.ok);
             } catch (e) { out(String(e), false); }
         });
 
-        // 🎤 Press & hold to record — stop on release or after 12s (also Esc/leave)
+        // ---------- 🎤 Press & hold to record ----------
         const holdBtn = document.getElementById('btnHold');
         let mediaRecorder, chunks = [], stopTimer, stream;
+
+        // Resample Float32 mono buffer to target sampleRate (linear)
+        function resampleFloat32Mono(src, srcRate, dstRate) {
+            if (srcRate === dstRate) return src;
+            const ratio = dstRate / srcRate;
+            const dstLength = Math.max(1, Math.round(src.length * ratio));
+            const dst = new Float32Array(dstLength);
+            let pos = 0;
+            for (let i = 0; i < dstLength; i++) {
+                const s = i / ratio;
+                const i0 = Math.floor(s);
+                const i1 = Math.min(i0 + 1, src.length - 1);
+                const t = s - i0;
+                dst[i] = (1 - t) * src[i0] + t * src[i1];
+                pos += ratio;
+            }
+            return dst;
+        }
+
+        // Encode Float32 mono @16k into WAV (PCM16)
+        function floatTo16BitPCM(float32) {
+            const out = new Int16Array(float32.length);
+            for (let i = 0; i < float32.length; i++) {
+                let s = Math.max(-1, Math.min(1, float32[i]));
+                out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            return out;
+        }
+
+        function writeWavPCM16(samples, sampleRate) {
+            const headerSize = 44;
+            const dataSize = samples.length * 2;
+            const buf = new ArrayBuffer(headerSize + dataSize);
+            const view = new DataView(buf);
+
+            function setU32(off, val) { view.setUint32(off, val, true); }
+            function setU16(off, val) { view.setUint16(off, val, true); }
+
+            // RIFF header
+            setU32(0, 0x46464952); // "RIFF"
+            setU32(4, 36 + dataSize);
+            setU32(8, 0x45564157); // "WAVE"
+            // fmt chunk
+            setU32(12, 0x20746d66); // "fmt "
+            setU32(16, 16);
+            setU16(20, 1);          // PCM
+            setU16(22, 1);          // mono
+            setU32(24, sampleRate);
+            setU32(28, sampleRate * 2); // byteRate = sr * channels * bytesPerSample
+            setU16(32, 2);          // block align
+            setU16(34, 16);         // bits per sample
+            // data chunk
+            setU32(36, 0x61746164); // "data"
+            setU32(40, dataSize);
+
+            // PCM data
+            const out = new Int16Array(buf, headerSize);
+            out.set(samples);
+
+            return new Blob([buf], { type: 'audio/wav' });
+        }
+
+        async function blobToWav16kMono(blob) {
+            const ab = await blob.arrayBuffer();
+            const ac = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuf = await ac.decodeAudioData(ab);
+
+            // mix down to mono
+            let mono;
+            if (audioBuf.numberOfChannels === 1) {
+                mono = audioBuf.getChannelData(0);
+            } else {
+                const ch0 = audioBuf.getChannelData(0);
+                const ch1 = audioBuf.getChannelData(1);
+                const len = Math.min(ch0.length, ch1.length);
+                mono = new Float32Array(len);
+                for (let i = 0; i < len; i++) mono[i] = (ch0[i] + ch1[i]) * 0.5;
+            }
+
+            const resampled = resampleFloat32Mono(mono, audioBuf.sampleRate, 16000);
+            const pcm16 = floatTo16BitPCM(resampled);
+            return writeWavPCM16(pcm16, 16000);
+        }
 
         const startRec = async () => {
             if (mediaRecorder?.state === 'recording') return;
@@ -129,22 +209,24 @@
                 mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
                 mediaRecorder.onstop = async () => {
                     try {
-                        const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                        const mixed = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                        // Convert to WAV 16k mono in-browser
+                        const wavBlob = await blobToWav16kMono(mixed);
                         const fd = new FormData();
-                        fd.append('file', blob, 'recording.webm'); // Whisper accepts webm/ogg/mp3/wav
+                        fd.append('file', wavBlob, 'recording.wav'); // server expects WAV
                         const r = await fetch('/api/voicebot/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
-                        out(await asJSON(r), r.ok);
+                        const data = await asJSON(r);
+                        out(data, r.ok);
                     } catch (e) {
                         out(String(e), false);
                     } finally {
                         stream?.getTracks().forEach(t => t.stop());
                     }
                 };
-                mediaRecorder.start();           // start chunks
+                mediaRecorder.start();
                 holdBtn.textContent = '● Recording… release to stop';
                 holdBtn.classList.add('recording');
-                // safety stop after 12s
-                stopTimer = setTimeout(stopRec, 12000);
+                stopTimer = setTimeout(stopRec, 12000); // safety stop
             } catch (e) {
                 out('Mic error: ' + String(e), false);
             }
@@ -158,10 +240,8 @@
             holdBtn.classList.remove('recording');
         };
 
-        // Pointer events (mouse/touch/pen)
         holdBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); startRec(); });
         ['pointerup','pointerleave','pointercancel'].forEach(evt => holdBtn.addEventListener(evt, stopRec));
-        // Escape key also stops
         window.addEventListener('keydown', (e) => { if (e.key === 'Escape') stopRec(); });
     })();
 </script>

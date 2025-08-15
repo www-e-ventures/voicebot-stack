@@ -13,4 +13,12 @@ curl -s http://127.0.0.1:8000/   # -> {"ok":true,"service":"voicebot_api"}
 
 and in another terminal please do
 cd webapp
+php artisan serve --host=127.0.0.1 --port=9000
 
+
+
+2) Make sure Laravel points at FastAPI on 127.0.0.1
+
+Edit webapp/.env:
+
+VOICEBOT_API_URL=http://127.0.0.1:8000

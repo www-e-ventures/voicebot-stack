@@ -4,9 +4,9 @@
 import io
 import json
 import os
-import wave
+import struct
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import soundfile as sf
@@ -33,37 +33,93 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+DEFAULT_SAMPLE = os.getenv("DEFAULT_SAMPLE", "/opt/chatbot/data/default_sample.wav")
+SILENCE_MIN_BYTES = int(os.getenv("SILENCE_MIN_BYTES", "1200"))  # tiny uploads = likely silent
+TARGET_SR = 16000
+
+
 @app.get("/")
 def root():
     return {"ok": True, "service": "voicebot_api"}
 
 
+def _read_audio_float32(data: bytes) -> Tuple[np.ndarray, int]:
+    """
+    Try to decode 'data' as audio using soundfile → float32 mono.
+    Raises on failure.
+    """
+    audio, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=False)
+    # if stereo→mono
+    if isinstance(audio, np.ndarray) and audio.ndim == 2 and audio.shape[1] > 1:
+        audio = audio.mean(axis=1).astype(np.float32)
+    elif isinstance(audio, np.ndarray) and audio.ndim == 2 and audio.shape[1] == 1:
+        audio = audio[:, 0].astype(np.float32)
+    elif not isinstance(audio, np.ndarray):
+        audio = np.array(audio, dtype=np.float32)
+    return audio, sr
+
+
+def _resample_if_needed(audio: np.ndarray, sr: int, target_sr: int = TARGET_SR) -> Tuple[np.ndarray, int]:
+    if sr == target_sr:
+        return audio, sr
+    # fast path resample
+    import scipy.signal as sps
+    num = int(len(audio) * target_sr / sr)
+    if num <= 0:
+        raise ValueError(f"Invalid resample length {num} from {len(audio)} @ {sr}→{target_sr}")
+    return sps.resample(audio, num).astype(np.float32), target_sr
+
+
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
-    # Expecting WAV (PCM16, 16kHz mono) from the web client
     data = await file.read()
     if not data:
         return JSONResponse({"error": "Empty file"}, status_code=400)
 
-    audio, sr = sf.read(io.BytesIO(data), dtype="float32")
+    used_fallback = False
+    fallback_reason = None
 
-    # If stereo, convert to mono
-    if audio.ndim == 2 and audio.shape[1] > 1:
-        audio = np.mean(audio, axis=1)
+    # Tiny payload? very likely silence
+    tiny = len(data) < SILENCE_MIN_BYTES
+
+    try:
+        audio, sr = _read_audio_float32(data)
+    except Exception as e:
+        # Can't decode at all
+        if os.path.exists(DEFAULT_SAMPLE):
+            # fallback demonstration
+            with open(DEFAULT_SAMPLE, "rb") as f:
+                d2 = f.read()
+            audio, sr = _read_audio_float32(d2)
+            audio, sr = _resample_if_needed(audio, sr, TARGET_SR)
+            text, info = transcribe_wav(audio, sr)
+            return {
+                "text": text,
+                "info": info,
+                "fallback_used": True,
+                "fallback_reason": "decode-failed",
+            }
+        return JSONResponse({"error": f"Decode failed: {type(e).__name__}: {e}"}, status_code=400)
 
     if audio.size == 0:
-        return JSONResponse({"error": "No audio samples"}, status_code=400)
+        tiny = True  # treat as silent
 
-    if sr != 16000:
-        # naive resample (fast path)
-        import scipy.signal as sps
-        num = int(len(audio) * 16000 / sr)
-        if num <= 0:
-            return JSONResponse({"error": f"Invalid resample target length {num}"}, status_code=400)
-        audio = sps.resample(audio, num)
-        sr = 16000
+    # Resample to model sample rate
+    audio, sr = _resample_if_needed(audio, sr, TARGET_SR)
 
     text, info = transcribe_wav(audio, sr)
+    if tiny or (not text or not text.strip()):
+        if os.path.exists(DEFAULT_SAMPLE):
+            with open(DEFAULT_SAMPLE, "rb") as f:
+                d2 = f.read()
+            a2, sr2 = _read_audio_float32(d2)
+            a2, sr2 = _resample_if_needed(a2, sr2, TARGET_SR)
+            text2, info2 = transcribe_wav(a2, sr2)
+            used_fallback, fallback_reason = True, "empty-or-silent-upload"
+            return {"text": text2, "info": info2, "fallback_used": used_fallback, "fallback_reason": fallback_reason}
+        # no fallback available: return original (possibly empty) with warning
+        return {"text": text, "info": info, "warning": "Audio looked empty/silent and no fallback sample is configured."}
+
     return {"text": text, "info": info}
 
 
@@ -83,10 +139,17 @@ async def tts(text: str = Form(...)):
     sample_rate = 22050  # Piper default output
 
     def wav_stream():
-        # Streaming/unknown-length WAV header
-        header = _wav_header(sample_rate)
+        # Minimal streaming WAV header (sizes set to 0xFFFFFFFF as sentinel)
+        num_channels = 1
+        bits_per_sample = 16
+        byte_rate = sample_rate * num_channels * bits_per_sample // 8
+        block_align = num_channels * bits_per_sample // 8
+        header = (
+            b"RIFF" + struct.pack('<I', 0xFFFFFFFF) + b"WAVE"
+            + b"fmt " + struct.pack('<IHHIIHH', 16, 1, num_channels, sample_rate, byte_rate, block_align, bits_per_sample)
+            + b"data" + struct.pack('<I', 0xFFFFFFFF)
+        )
         yield header
-        # Raw PCM chunks from Piper
         for chunk in synth_stream(text):
             if chunk:
                 yield chunk
@@ -94,23 +157,8 @@ async def tts(text: str = Form(...)):
     return StreamingResponse(wav_stream(), media_type="audio/wav")
 
 
-def _wav_header(sr: int) -> bytes:
-    # Minimal WAV header for streaming (sizes set to 0xFFFFFFFF as sentinel)
-    import struct
-    num_channels = 1
-    bits_per_sample = 16
-    byte_rate = sr * num_channels * bits_per_sample // 8
-    block_align = num_channels * bits_per_sample // 8
-    return (
-        b"RIFF" + struct.pack('<I', 0xFFFFFFFF) + b"WAVE"
-        + b"fmt " + struct.pack('<IHHIIHH', 16, 1, num_channels, sr, byte_rate, block_align, bits_per_sample)
-        + b"data" + struct.pack('<I', 0xFFFFFFFF)
-    )
-
-
 # Simple test page
 @app.get("/demo")
 async def demo():
     html_path = Path(__file__).parent / "static" / "index.html"
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
-
