@@ -210,7 +210,7 @@
                 mediaRecorder.onstop = async () => {
                     try {
                         const mixed = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-                        // Convert to WAV 16k mono in-browser
+                        //Convert to WAV 16k mono in-browser
                         const wavBlob = await blobToWav16kMono(mixed);
                         const fd = new FormData();
                         fd.append('file', wavBlob, 'recording.wav'); // server expects WAV
