@@ -4,22 +4,49 @@ from pathlib import Path
 import torch
 from TTS.api import TTS
 
-# One global model instance
-_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-_TTS = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(_DEVICE)
+_TTS = None
+_MODEL = None
+_SPEAKER_WAV = None
 
-def synth_wav_xtts_to_bytes(text: str, speaker_wav_path: str) -> bytes:
+def _ensure_model_loaded():
+    global _TTS, _MODEL, _SPEAKER_WAV
+    if _TTS is None:
+        try:
+            from TTS.api import TTS as _COQUI_TTS
+        except Exception as e:
+            raise RuntimeError(f"Coqui TTS not available: {e}")
+        _TTS = _COQUI_TTS
+
+    if _MODEL is None:
+        model_name = os.getenv("XTTS_MODEL", "tts_models/multilingual/multi-dataset/xtts_v2")
+        _MODEL = _TTS(model_name)
+
+    if _SPEAKER_WAV is None:
+        # One or more reference files (comma-separated) to “clone”
+        refs = os.getenv("XTTS_SPEAKER_WAV", "").strip()
+        if refs:
+            _SPEAKER_WAV = [p.strip() for p in refs.split(",") if p.strip()]
+        else:
+            _SPEAKER_WAV = None
+
+def synth_wav_xtts_to_bytes(text: str) -> bytes:
     """
-    Generate a WAV (16-bit PCM) in memory with XTTS using a reference speaker WAV.
-    For simplicity we render to a temp file then read it back.
+    Synthesize `text` using Coqui XTTS to WAV bytes.
+    Requires Torch CPU wheels and TTS installed.
     """
-    import tempfile
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmpname = tmp.name
-    try:
-        _TTS.tts_to_file(text=text, speaker_wav=speaker_wav_path, file_path=tmpname)
-        with open(tmpname, "rb") as f:
-            return f.read()
-    finally:
-        try: os.remove(tmpname)
-        except: pass
+    _ensure_model_loaded()
+    # Language hint; XTTS expects ISO code, e.g., "en"
+    lang = os.getenv("XTTS_LANG", "en")
+
+    # TTS returns a numpy float32 mono array at 22.05k by default
+    wav = _MODEL.tts(
+        text=text,
+        speaker_wav=_SPEAKER_WAV,  # None or list of paths
+        language=lang,
+    )
+
+    # Write to a WAV in-memory
+    import soundfile as sf
+    buf = io.BytesIO()
+    sf.write(buf, wav, 22050, subtype="PCM_16", format="WAV")
+    return buf.getvalue()
