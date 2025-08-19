@@ -1,0 +1,1 @@
+docker logs -n 200 voicebot_api
