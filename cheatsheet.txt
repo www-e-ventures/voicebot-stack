@@ -23,3 +23,47 @@ Edit webapp/.env:
 
 VOICEBOT_API_URL=http://127.0.0.1:8000
 
+-------------------------------
+
+
+
+Most common (auto-detects branch, skips local build, rebuilds remote API only if needed):
+
+./scripts/all_in_one.sh deploy@voicebot.tv.digital
+
+
+Specify branch:
+
+./scripts/all_in_one.sh deploy@voicebot.tv.digital --branch main
+
+
+Include a commit message:
+
+./scripts/all_in_one.sh deploy@voicebot.tv.digital --branch main -m "fix: mic fallback + chat-voice"
+
+
+Force a remote API rebuild even if detector says “no”:
+
+./scripts/all_in_one.sh deploy@voicebot.tv.digital --force-api-rebuild
+
+
+Do a quick local API build test first (useful before pushing):
+
+./scripts/all_in_one.sh deploy@voicebot.tv.digital --local-build-api
+
+Notes / assumptions
+
+Your compose service for FastAPI is named api. If it isn’t, change the two docker compose … api lines.
+
+The script won’t restart nginx/php-fpm because your Laravel folder is deployed in-place and PHP-FPM reload isn’t needed for code changes; nginx config changes would be separate ops.
+
+The Laravel deploy is idempotent and keeps .env if present.
+
+The API rebuild detector watches server/**, Dockerfile, and common Python dep files
+
+
+
+
+
+
+
