@@ -114,29 +114,9 @@ class VoicebotController extends Controller
         }
     }
 
+
+
     public function LEGACYchatVoice(Request $req)
-    {
-        $api = rtrim(env('VOICEBOT_API_URL','http://localhost:8000'), '/');
-        $resp = Http::asForm()->stream('POST', "{$api}/chat-voice", [
-            'text' => $req->input('text', ''),
-            'history' => $req->input('history', '[]'),
-        ]);
-
-        if (!$resp->ok()) {
-            return response($resp->body(), $resp->status());
-        }
-
-        // stream WAV back through Laravel
-        return response()->stream(function () use ($resp) {
-            foreach ($resp->stream() as $chunk) { echo $chunk; }
-        }, 200, [
-            'Content-Type' => 'audio/wav',
-            'Content-Disposition' => 'inline; filename="chat-voice.wav"',
-            'Cache-Control' => 'no-cache, private',
-        ]);
-    }
-
-    public function chatVoice(Request $req)
     {
         $api = rtrim(config('services.voicebot.api_url', env('VOICEBOT_API_URL', 'http://127.0.0.1:8000')), '/');
 
@@ -195,6 +175,42 @@ class VoicebotController extends Controller
         }
     }
 
+    public function chatVoice(Request $req)
+    {
+        $api = rtrim(env('VOICEBOT_API_URL','http://127.0.0.1:8000'), '/');
+
+        $parts = [];
+        foreach (['text','history','speaker_id','speaker'] as $k) {
+            if ($req->filled($k)) {
+                $parts[] = ['name' => $k, 'contents' => $req->input($k)];
+            }
+        }
+        if (!collect($parts)->firstWhere('name','text')) {
+            return response()->json(['error' => 'text is required'], 400);
+        }
+
+        try {
+            $down = Http::asMultipart()
+                ->timeout(300)
+                ->withHeaders(['Accept' => 'audio/wav'])
+                ->send('POST', "{$this->api}/chat-voice", ['multipart' => $parts]);
+
+            if (!$down->successful()) {
+                return response()->json([
+                    'error' => 'backend error',
+                    'status' => $down->status(),
+                    'body' => $down->body(),
+                ], $down->status());
+            }
+
+            return response($down->body(), 200)
+                ->header('Content-Type', 'audio/wav')
+                ->header('Content-Disposition', 'inline; filename="chat-voice.wav"')
+                ->header('Cache-Control', 'no-cache, private');
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 502);
+        }
+    }
 
 
 
