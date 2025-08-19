@@ -23,5 +23,5 @@ sentence-transformers==3.0.1
 python-multipart==0.0.12
 # --- Voice cloning (Coqui TTS + CPU Torch) ---
 TTS==0.22.0
-#torch==2.3.1              #ADDED TO Dockerifle
-#torchaudio==2.3.1         #ADDED TO Dockerfile
+torch==2.3.1              #ADDED TO Dockerifle
+torchaudio==2.3.1         #ADDED TO Dockerfile
