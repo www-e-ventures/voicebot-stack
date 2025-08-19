@@ -1,0 +1,85 @@
+Local rebuild (API + Laravel)
+
+Sanity check env files
+
+./.env (repo root) should be real key/value pairs only. Make sure there’s no torch>=... or other requirement-style lines in there.
+
+webapp/.env should have:
+
+APP_ENV=local
+APP_DEBUG=true
+VOICEBOT_API_URL=http://127.0.0.1:8000
+
+
+(Keep this pointing at the local FastAPI on 8000.)
+
+Rebuild FastAPI image cleanly
+
+cd ~/ev/chatbot
+docker compose build --no-cache api
+docker compose up -d api
+docker logs -f voicebot_api
+
+
+Wait to see:
+
+Uvicorn running on http://0.0.0.0:8000
+
+
+Then Ctrl-C to stop following logs.
+
+Quick API health + voice stream
+
+curl -s http://127.0.0.1:8000/ && echo
+curl -s -X POST http://127.0.0.1:8000/chat-voice \
+  -F 'text=Say hi with energy' --output /tmp/reply.wav
+file /tmp/reply.wav   # should say: WAV, 16-bit mono 22050 Hz
+
+
+Run Laravel locally (no Nginx)
+
+cd webapp
+composer install
+php artisan serve --host=127.0.0.1 --port=9000
+
+
+Leave that running in one terminal.
+
+Laravel → FastAPI smoke (new terminal)
+
+# Health passthrough
+curl -s http://127.0.0.1:9000/api/voicebot/health && echo
+
+# Chat text
+curl -s -X POST http://127.0.0.1:9000/api/voicebot/chat \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Say hi in one sentence","history":"[]"}' | jq
+
+# TTS
+curl -s -X POST http://127.0.0.1:9000/api/voicebot/tts \
+  -F "text=Hello from Laravel via FastAPI" --output /tmp/laravel_tts.wav
+file /tmp/laravel_tts.wav
+
+# Chat+Voice (streamed WAV back)
+curl -s -X POST http://127.0.0.1:9000/api/voicebot/chat-voice \
+  -F 'text=Hello from Laravel' --output /tmp/reply_laravel.wav
+file /tmp/reply_laravel.wav
+
+
+Open the Blade tests page
+
+Visit: http://127.0.0.1:9000/voicebot/tests
+
+Try:
+
+Health
+
+Chat
+
+TTS (download)
+
+Transcribe (upload a small WAV)
+
+Speak (Piper) — will play audio
+
+Speaker Upload / Refresh / Speak (cloned) when you have a sample ready
