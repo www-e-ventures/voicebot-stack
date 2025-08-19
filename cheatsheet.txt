@@ -24,7 +24,9 @@ Edit webapp/.env:
 VOICEBOT_API_URL=http://127.0.0.1:8000
 
 -------------------------------
-
+scripts/all_in_one.sh
+This script automates the deployment of the Voicebot webapp and FastAPI server to a remote,
+and usage is as follows:
 
 
 Most common (auto-detects branch, skips local build, rebuilds remote API only if needed):
