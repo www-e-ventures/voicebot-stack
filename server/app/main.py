@@ -133,40 +133,39 @@ async def chat(text: str = Form(...), history: Optional[str] = Form(None)):
     reply = generate_reply(text, history_json)
     return {"reply": reply}
 
+def _wav_header(sr: int) -> bytes:
+    """Minimal WAV header for streaming 16-bit PCM mono, unknown length."""
+    import struct
+    num_channels = 1
+    bits_per_sample = 16
+    byte_rate = sr * num_channels * bits_per_sample // 8
+    block_align = num_channels * bits_per_sample // 8
+    return (
+        b"RIFF" + struct.pack('<I', 0xFFFFFFFF) + b"WAVE"
+        + b"fmt " + struct.pack('<IHHIIHH', 16, 1, num_channels, sr, byte_rate, block_align, bits_per_sample)
+        + b"data" + struct.pack('<I', 0xFFFFFFFF)
+    )
+
 
 @app.post("/tts")
 async def tts(text: str = Form(...)):
-    # Stream raw 16-bit little-endian PCM from Piper, wrap as WAV on the fly
-    sample_rate = 22050  # Piper default output
-
+    sample_rate = 22050
     def wav_stream():
-        # Minimal streaming WAV header (sizes set to 0xFFFFFFFF as sentinel)
-        num_channels = 1
-        bits_per_sample = 16
-        byte_rate = sample_rate * num_channels * bits_per_sample // 8
-        block_align = num_channels * bits_per_sample // 8
-        header = (
-            b"RIFF" + struct.pack('<I', 0xFFFFFFFF) + b"WAVE"
-            + b"fmt " + struct.pack('<IHHIIHH', 16, 1, num_channels, sample_rate, byte_rate, block_align, bits_per_sample)
-            + b"data" + struct.pack('<I', 0xFFFFFFFF)
-        )
-        yield header
+        yield _wav_header(sample_rate)
         for chunk in synth_stream(text):
             if chunk:
                 yield chunk
-
     return StreamingResponse(wav_stream(), media_type="audio/wav")
+
 
 @app.post("/chat-voice")
 async def chat_voice(text: str = Form(...), history: Optional[str] = Form(None)):
-    # 1) get the text reply first
     try:
         history_json = json.loads(history) if history else []
     except Exception:
         history_json = []
     reply = generate_reply(text, history_json)
 
-    # 2) stream that reply as WAV (Piper)
     sample_rate = 22050
     def wav_stream():
         yield _wav_header(sample_rate)
@@ -174,10 +173,8 @@ async def chat_voice(text: str = Form(...), history: Optional[str] = Form(None))
             if chunk:
                 yield chunk
 
-    # Optional: include the text reply in a header so the client can show it
     headers = {"X-Reply-Text": reply}
     return StreamingResponse(wav_stream(), media_type="audio/wav", headers=headers)
-
 # --- add near top ---
 from app.tts_xtts import synth_wav_xtts_to_bytes
 
