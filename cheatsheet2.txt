@@ -1,0 +1,19 @@
+Quick “what do I run when…”
+
+Edited Blade/Controllers/Routes only
+
+./scripts/deploy_remote.sh deploy@voicebot.tv.digital
+
+
+(It’ll skip API rebuild; just refresh Laravel + health checks.)
+
+Edited FastAPI Python (server/app), or requirements/Dockerfile
+
+./scripts/deploy_remote.sh deploy@voicebot.tv.digital
+
+
+(It detects the changes and rebuilds api automatically.)
+
+Hot rebuild API only (you know you changed it)
+
+./scripts/rebuild_api_remote.sh deploy@voicebot.tv.digital
