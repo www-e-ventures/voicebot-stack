@@ -252,11 +252,6 @@ async def speaker_delete(speaker_id: str):
     import shutil
     shutil.rmtree(spath, ignore_errors=True)
     return {"ok": True}
-
-
-
-
-
 # Simple test page
 @app.get("/demo")
 async def demo():

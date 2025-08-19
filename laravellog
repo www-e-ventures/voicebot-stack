@@ -1,0 +1,70 @@
+[2025-08-14 03:18:17] local.ERROR: There are no commands defined in the "routes" namespace.
+
+Did you mean this?
+    route {"exception":"[object] (Symfony\\Component\\Console\\Exception\\NamespaceNotFoundException(code: 0): There are no commands defined in the \"routes\" namespace.
+
+Did you mean this?
+    route at /home/eventures/ev/chatbot/webapp/vendor/symfony/console/Application.php:659)
+[stacktrace]
+#0 /home/eventures/ev/chatbot/webapp/vendor/symfony/console/Application.php(708): Symfony\\Component\\Console\\Application->findNamespace()
+#1 /home/eventures/ev/chatbot/webapp/vendor/symfony/console/Application.php(283): Symfony\\Component\\Console\\Application->find()
+#2 /home/eventures/ev/chatbot/webapp/vendor/symfony/console/Application.php(192): Symfony\\Component\\Console\\Application->doRun()
+#3 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(197): Symfony\\Component\\Console\\Application->run()
+#4 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1234): Illuminate\\Foundation\\Console\\Kernel->handle()
+#5 /home/eventures/ev/chatbot/webapp/artisan(16): Illuminate\\Foundation\\Application->handleCommand()
+#6 {main}
+"} 
+[2025-08-14 03:24:28] local.ERROR: Stream is not seekable {"exception":"[object] (RuntimeException(code: 0): Stream is not seekable at /home/eventures/ev/chatbot/webapp/vendor/guzzlehttp/psr7/src/Stream.php:209)
+[stacktrace]
+#0 /home/eventures/ev/chatbot/webapp/vendor/guzzlehttp/psr7/src/Stream.php(198): GuzzleHttp\\Psr7\\Stream->seek()
+#1 /home/eventures/ev/chatbot/webapp/app/Http/Controllers/VoicebotController.php(54): GuzzleHttp\\Psr7\\Stream->rewind()
+#2 /home/eventures/ev/chatbot/webapp/vendor/symfony/http-foundation/StreamedResponse.php(125): App\\Http\\Controllers\\VoicebotController->App\\Http\\Controllers\\{closure}()
+#3 /home/eventures/ev/chatbot/webapp/vendor/symfony/http-foundation/Response.php(397): Symfony\\Component\\HttpFoundation\\StreamedResponse->sendContent()
+#4 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1219): Symfony\\Component\\HttpFoundation\\Response->send()
+#5 /home/eventures/ev/chatbot/webapp/public/index.php(20): Illuminate\\Foundation\\Application->handleRequest()
+#6 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php(23): require_once('...')
+#7 {main}
+"} 
+[2025-08-19 18:43:41] local.ERROR: Method Illuminate\Http\Client\PendingRequest::stream does not exist. {"exception":"[object] (BadMethodCallException(code: 0): Method Illuminate\\Http\\Client\\PendingRequest::stream does not exist. at /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Macroable/Traits/Macroable.php:115)
+[stacktrace]
+#0 /home/eventures/ev/chatbot/webapp/app/Http/Controllers/VoicebotController.php(120): Illuminate\\Http\\Client\\PendingRequest->__call()
+#1 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/ControllerDispatcher.php(46): App\\Http\\Controllers\\VoicebotController->chatVoice()
+#2 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Route.php(265): Illuminate\\Routing\\ControllerDispatcher->dispatch()
+#3 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Route.php(211): Illuminate\\Routing\\Route->runController()
+#4 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Router.php(822): Illuminate\\Routing\\Route->run()
+#5 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(180): Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}()
+#6 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Middleware/SubstituteBindings.php(50): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#7 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Routing\\Middleware\\SubstituteBindings->handle()
+#8 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(137): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#9 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Router.php(821): Illuminate\\Pipeline\\Pipeline->then()
+#10 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Router.php(800): Illuminate\\Routing\\Router->runRouteWithinStack()
+#11 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Router.php(764): Illuminate\\Routing\\Router->runRoute()
+#12 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Routing/Router.php(753): Illuminate\\Routing\\Router->dispatchToRoute()
+#13 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(200): Illuminate\\Routing\\Router->dispatch()
+#14 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(180): Illuminate\\Foundation\\Http\\Kernel->Illuminate\\Foundation\\Http\\{closure}()
+#15 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#16 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/ConvertEmptyStringsToNull.php(31): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle()
+#17 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull->handle()
+#18 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#19 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/TrimStrings.php(51): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle()
+#20 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Foundation\\Http\\Middleware\\TrimStrings->handle()
+#21 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Http/Middleware/ValidatePostSize.php(27): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#22 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Http\\Middleware\\ValidatePostSize->handle()
+#23 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/PreventRequestsDuringMaintenance.php(109): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#24 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance->handle()
+#25 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Http/Middleware/HandleCors.php(61): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#26 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Http\\Middleware\\HandleCors->handle()
+#27 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Http/Middleware/TrustProxies.php(58): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#28 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Http\\Middleware\\TrustProxies->handle()
+#29 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/InvokeDeferredCallbacks.php(22): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#30 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Foundation\\Http\\Middleware\\InvokeDeferredCallbacks->handle()
+#31 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Http/Middleware/ValidatePathEncoding.php(26): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#32 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(219): Illuminate\\Http\\Middleware\\ValidatePathEncoding->handle()
+#33 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Pipeline/Pipeline.php(137): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}()
+#34 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(175): Illuminate\\Pipeline\\Pipeline->then()
+#35 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Http/Kernel.php(144): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter()
+#36 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(1219): Illuminate\\Foundation\\Http\\Kernel->handle()
+#37 /home/eventures/ev/chatbot/webapp/public/index.php(20): Illuminate\\Foundation\\Application->handleRequest()
+#38 /home/eventures/ev/chatbot/webapp/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php(23): require_once('...')
+#39 {main}
+"} 
