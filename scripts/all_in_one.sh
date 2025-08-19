@@ -1,165 +1,150 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ============================================================
+# ==========================================================
 # all_in_one.sh
-# Local → Remote build & deploy for Voicebot stack
-#
-# Features:
-# - Optional local API build test (docker compose build api)
-# - Git add/commit/push from current branch (or override)
-# - Remote deploy:
-#     * Pull latest
-#     * Laravel composer install + optimize + perms
-#     * Auto-detect if API image needs rebuild (server/*, Dockerfile, reqs, etc.)
-#     * docker compose up -d api
+# - Local build + smoke (FastAPI; optional Laravel)
+# - Remote deploy + rebuild (if needed) + smoke (FastAPI + /voicebot/tests)
 #
 # Usage:
-#   ./scripts/all_in_one.sh deploy@voicebot.tv.digital [--branch main] [-m "deploy msg"] [--local-build-api] [--force-api-rebuild]
+#   ./scripts/all_in_one.sh deploy@voicebot.tv.digital [--branch main] [--force-api-rebuild] [--local-only|--remote-only]
 #
-# Env overrides:
+# Env (optional):
 #   APP_ROOT=/opt/chatbot
-#   REPO_URL=git@github.com:your/repo.git
-#
-# Exit codes:
-#   0 success
-#   1 usage / git missing / repo not detected
-#   2 remote laravel not found
-# ============================================================
+#   REPO_URL=git@github.com:www-e-ventures/voicebot-stack.git
+#   DOMAIN=voicebot.tv.digital
+#   FASTAPI_LOCAL=http://127.0.0.1:8000
+#   LARAVEL_LOCAL_BASE=http://localhost:9000      # if you run php artisan serve locally
+# ==========================================================
 
-# --------- args ----------
-REMOTE="${1:-}"
+### helpers
+say() { printf "\n[%s] %s\n" "${1:-info}" "${2:-}"; }
+die() { printf "\n[error] %s\n" "${1:-}"; exit 1; }
+
+### args/defaults
+REMOTE_HOST="${1:-}"
 shift || true
 
-BRANCH=""        # default: current local branch
-COMMIT_MSG=""    # default: "deploy: <timestamp>"
-LOCAL_BUILD_API="no"
+BRANCH="main"
 FORCE_API_REBUILD="no"
+MODE="both"   # both | local | remote
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --branch) BRANCH="${2:?}"; shift 2;;
-    -m|--message) COMMIT_MSG="${2:?}"; shift 2;;
-    --local-build-api) LOCAL_BUILD_API="yes"; shift;;
-    --force-api-rebuild) FORCE_API_REBUILD="yes"; shift;;
-    *) echo "Unknown arg: $1"; exit 1;;
+    --branch) BRANCH="${2:?}"; shift 2 ;;
+    --force-api-rebuild) FORCE_API_REBUILD="yes"; shift ;;
+    --local-only) MODE="local"; shift ;;
+    --remote-only) MODE="remote"; shift ;;
+    *) die "Unknown arg: $1" ;;
   esac
 done
 
-if [[ -z "$REMOTE" ]]; then
-  echo "Usage: $0 deploy@host [--branch main] [-m \"deploy msg\"] [--local-build-api] [--force-api-rebuild]"
-  exit 1
-fi
-
 APP_ROOT="${APP_ROOT:-/opt/chatbot}"
-
-# detect repo URL + branch
 REPO_URL="${REPO_URL:-$(git remote get-url origin 2>/dev/null || true)}"
-if [[ -z "${REPO_URL}" ]]; then
-  echo "[local] Could not detect REPO_URL from git. Set REPO_URL=... and retry."
-  exit 1
-fi
+DOMAIN="${DOMAIN:-voicebot.tv.digital}"
+FASTAPI_LOCAL="${FASTAPI_LOCAL:-http://127.0.0.1:8000}"
+LARAVEL_LOCAL_BASE="${LARAVEL_LOCAL_BASE:-}"   # e.g. http://localhost:9000
 
-if [[ -z "$BRANCH" ]]; then
-  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-fi
+[[ -z "$REPO_URL" ]] && die "Could not detect REPO_URL (set env REPO_URL=...)"
 
-# --------- local build test (optional) ----------
-if [[ "${LOCAL_BUILD_API}" == "yes" ]]; then
-  echo
-  echo "[local] Local API build test (docker compose build api)…"
+### LOCAL BUILD + SMOKE
+if [[ "$MODE" == "local" || "$MODE" == "both" ]]; then
+  say local "Staging & pushing local changes on branch ${BRANCH}…"
+  git add -A
+  git commit -m "deploy: $(date -u +'%F %T %Z')" || true
+  git push origin "$BRANCH"
+
+  say local "Building FastAPI image locally (docker compose build api)…"
   docker compose build api
-  echo "[local] Local API build done."
+
+  say local "Local FastAPI smoke… ($FASTAPI_LOCAL)"
+  set +e
+  FAST_HEALTH=$(curl -s "$FASTAPI_LOCAL/" || true)
+  FAST_DEMO_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$FASTAPI_LOCAL/demo")
+  set -e
+  say local "FastAPI / -> ${FAST_HEALTH:-<no response>}"
+  say local "FastAPI /demo -> HTTP ${FAST_DEMO_CODE}"
+
+  if [[ -n "$LARAVEL_LOCAL_BASE" ]]; then
+    say local "Local Laravel→FastAPI smoke… ($LARAVEL_LOCAL_BASE)"
+    set +e
+    LARA_HEALTH=$(curl -s "$LARAVEL_LOCAL_BASE/api/voicebot/health" || true)
+    TTS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$LARAVEL_LOCAL_BASE/api/voicebot/tts" -F "text=hi")
+    set -e
+    say local "Laravel /api/voicebot/health -> ${LARA_HEALTH:-<no response>}"
+    say local "Laravel /api/voicebot/tts -> HTTP ${TTS_CODE}"
+  else
+    say local "Skipping Laravel local smoke (LARAVEL_LOCAL_BASE not set)."
+  fi
 fi
 
-# --------- local commit & push ----------
-if [[ -z "${COMMIT_MSG}" ]]; then
-  TS="$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-  COMMIT_MSG="deploy: ${TS}"
-fi
+### REMOTE DEPLOY
+if [[ "$MODE" == "remote" || "$MODE" == "both" ]]; then
+  [[ -z "$REMOTE_HOST" ]] && die "REMOTE_HOST required for remote deploy (e.g. deploy@voicebot.tv.digital)."
 
-echo
-echo "[local] Staging/committing changes on branch ${BRANCH}…"
-git add -A
-# Only commit if there are staged changes
-if ! git diff --cached --quiet; then
-  git commit -m "${COMMIT_MSG}"
-else
-  echo "[local] No staged changes to commit."
-fi
+  say local "Target: ${REMOTE_HOST}"
+  say local "Branch: ${BRANCH}"
+  say local "App root: ${APP_ROOT}"
+  say local "Repo URL: ${REPO_URL}"
+  say local "Force API rebuild? ${FORCE_API_REBUILD}"
 
-echo "[local] Pushing to origin/${BRANCH}…"
-git push origin "${BRANCH}"
+  say local "Checking SSH connectivity…"
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$REMOTE_HOST" 'echo "[remote] OK $(whoami)@$(hostname)"'
 
-echo
-echo "[local] Target: ${REMOTE}"
-echo "[local] Branch: ${BRANCH}"
-echo "[local] App root: ${APP_ROOT}"
-echo "[local] Repo URL: ${REPO_URL}"
-echo "[local] Force API rebuild? ${FORCE_API_REBUILD}"
-echo
-
-echo "[local] Checking SSH connectivity…"
-ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${REMOTE}" 'echo "[remote] OK $(whoami)@$(hostname)"'
-
-# --------- remote deploy ----------
-echo
-echo "[local] Running remote deployment…"
-ssh "${REMOTE}" "REPO_URL='${REPO_URL}' BRANCH='${BRANCH}' APP_ROOT='${APP_ROOT}' FORCE_API_REBUILD='${FORCE_API_REBUILD}' bash -s" <<'REMOTE'
+  say local "Running remote deployment…"
+  ssh "$REMOTE_HOST" "REPO_URL='${REPO_URL}' BRANCH='${BRANCH}' APP_ROOT='${APP_ROOT}' FORCE_API_REBUILD='${FORCE_API_REBUILD}' DOMAIN='${DOMAIN}' bash -s" <<'REMOTE'
 set -euo pipefail
+say() { printf "\n[%s] %s\n" "${1:-info}" "${2:-}"; }
 
-say() { echo "[remote] $*"; }
+APP_ROOT="${APP_ROOT:?}"
+REPO_URL="${REPO_URL:?}"
+BRANCH="${BRANCH:?}"
+FORCE_API_REBUILD="${FORCE_API_REBUILD:-no}"
+DOMAIN="${DOMAIN:?voicebot.tv.digital}"
 
-say "Prep app root: ${APP_ROOT}"
+say remote "Prep app root: ${APP_ROOT}"
 sudo mkdir -p "${APP_ROOT}"
 sudo chown -R "${USER}:${USER}" "${APP_ROOT}"
 cd "${APP_ROOT}"
 
+say remote "Fetching/pulling latest…"
 if [[ ! -d .git ]]; then
-  say "Cloning ${REPO_URL} (branch ${BRANCH})…"
   git clone -b "${BRANCH}" --single-branch "${REPO_URL}" "${APP_ROOT}"
+  cd "${APP_ROOT}"
 else
-  say "Fetching/pulling latest…"
   git fetch origin "${BRANCH}"
   git checkout "${BRANCH}"
   git reset --hard "origin/${BRANCH}"
 fi
 
+OLD_SHA="$(cat .deployed_sha 2>/dev/null || echo '')"
 NEW_SHA="$(git rev-parse HEAD)"
-OLD_SHA="$(cat .deployed_sha 2>/dev/null || echo "")"
+say remote "OLD_SHA=${OLD_SHA:-<none>}"
+say remote "NEW_SHA=${NEW_SHA}"
 
-say "OLD_SHA=${OLD_SHA:-<none>}"
-say "NEW_SHA=${NEW_SHA}"
-
-# Detect changes that impact API image
-NEEDS_API_REBUILD="no"
-if [[ "${FORCE_API_REBUILD:-no}" == "yes" ]]; then
-  NEEDS_API_REBUILD="yes"
-else
-  if [[ -n "${OLD_SHA}" && "${OLD_SHA}" != "${NEW_SHA}" ]]; then
-    CHANGED="$(git diff --name-only "${OLD_SHA}" "${NEW_SHA}")"
-    if echo "${CHANGED}" | grep -Eq '(^|/)server/|(^|/)Dockerfile|(^|/)dockerfile|(^|/)requirements\.txt|(^|/)pyproject\.toml|(^|/)poetry\.lock'; then
-      NEEDS_API_REBUILD="yes"
-    fi
-  else
-    # First deploy or unknown previous SHA → build once
-    NEEDS_API_REBUILD="yes"
+NEEDS_API="no"
+if [[ "$FORCE_API_REBUILD" == "yes" ]]; then
+  NEEDS_API="yes"
+elif [[ "$OLD_SHA" != "$NEW_SHA" ]]; then
+  # naive check: if server/app or requirements changed, rebuild
+  if git diff --name-only "${OLD_SHA:-$NEW_SHA}" "${NEW_SHA}" | grep -Eq '^(server/|Dockerfile|docker-compose\.yml|server/app/requirements\.txt)'; then
+    NEEDS_API="yes"
   fi
 fi
-say "Needs API rebuild? ${NEEDS_API_REBUILD}"
+say remote "Needs API rebuild? ${NEEDS_API}"
 
-# Locate Laravel
-if [[ -d services/webapp ]]; then
+# ---- Laravel install/optimize ----
+WEB_ROOT="${APP_ROOT}/webapp"
+if [[ -d "${APP_ROOT}/services/webapp" ]]; then
   WEB_ROOT="${APP_ROOT}/services/webapp"
-elif [[ -d webapp ]]; then
-  WEB_ROOT="${APP_ROOT}/webapp"
-else
-  say "ERROR: Laravel app not found at services/webapp or webapp"
-  exit 2
 fi
 
-say "Laravel install/optimize…"
-cd "${WEB_ROOT}"
+if [[ ! -d "$WEB_ROOT" ]]; then
+  say remote "No Laravel app found at ${WEB_ROOT}"; exit 2
+fi
+
+say remote "Laravel install/optimize…"
+cd "$WEB_ROOT"
 mkdir -p bootstrap/cache \
          storage/app \
          storage/framework/{cache,sessions,testing,views} \
@@ -171,57 +156,49 @@ if [[ ! -f .env ]]; then
   php artisan key:generate
 fi
 grep -q '^VOICEBOT_API_URL=' .env || echo 'VOICEBOT_API_URL=http://127.0.0.1:8000' >> .env
-
 php artisan config:clear || true
 php artisan route:clear || true
 php artisan optimize
 
-# permissions for nginx/php-fpm
 sudo chgrp -R www-data bootstrap storage
 sudo find bootstrap storage -type d -exec chmod 2775 {} \;
 sudo find bootstrap storage -type f -exec chmod 664 {} \;
 
-# (Optional) ensure Piper model present
-mkdir -p "${APP_ROOT}/models/piper"
-if [[ ! -s "${APP_ROOT}/models/piper/en_US-amy-low.onnx" || ! -s "${APP_ROOT}/models/piper/en_US-amy-low.onnx.json" ]]; then
-  BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/low"
-  curl -fL "${BASE}/en_US-amy-low.onnx"      -o "${APP_ROOT}/models/piper/en_US-amy-low.onnx"
-  curl -fL "${BASE}/en_US-amy-low.onnx.json" -o "${APP_ROOT}/models/piper/en_US-amy-low.onnx.json"
-fi
-
+# ---- FastAPI docker compose ----
 cd "${APP_ROOT}"
-
-if [[ "${NEEDS_API_REBUILD}" == "yes" ]]; then
-  say "Building API image (compose service: api)…"
+if [[ "$NEEDS_API" == "yes" ]]; then
+  say remote "Building API image (compose service: api)…"
   /usr/bin/docker compose build api
-else
-  say "Skipping API rebuild."
 fi
 
-say "Ensuring API is up…"
-/usr/bin/docker compose up -d api
-
+say remote "Ensuring API is up…"
+/usr/bin/docker compose up -d
 sleep 1
-set +e
-FASTAPI=$(curl -s http://127.0.0.1:8000/ || true)
-LARAVEL=$(curl -s http://127.0.0.1/api/voicebot/health || true)
-set -e
-say "FastAPI -> ${FASTAPI}"
-say "Laravel→FastAPI -> ${LARAVEL}"
+
+# loopback health for FastAPI
+FAST=$(curl -s http://127.0.0.1:8000/ || true)
+say remote "FastAPI -> ${FAST:-<no response>}"
+
+# health for Laravel→FastAPI through nginx (IMPORTANT: set Host header!)
+# Use HTTPS + Host to match your vhost; -k tolerates cert issues on the box
+LARA=$(curl -sk -H "Host: ${DOMAIN}" https://127.0.0.1/api/voicebot/health || true)
+say remote "Laravel→FastAPI -> ${LARA:-<no response>}"
 
 echo "${NEW_SHA}" > .deployed_sha
-say "Done."
-REMOTE
 
-echo
-say "Post-deploy smoke test (HTTPS)…"
+# Post-deploy smoke: is /voicebot/tests reachable via HTTPS vhost?
+say remote "Post-deploy smoke test (HTTPS)…"
 set +e
-# curl with -k to ignore TLS self-signed issues (remove -k if prod cert is trusted)
-TESTS_CODE=$(curl -sk -o /dev/null -w "%{http_code}" https://voicebot.tv.digital/voicebot/tests)
-if [[ "$TESTS_CODE" == "200" || "$TESTS_CODE" == "302" ]]; then
-  say "Smoke OK: /voicebot/tests -> HTTP ${TESTS_CODE}"
-else
-  say "Smoke FAIL: /voicebot/tests -> HTTP ${TESTS_CODE}"
-fi
+TESTS_CODE=$(curl -sk -H "Host: ${DOMAIN}" -o /dev/null -w "%{http_code}" https://127.0.0.1/voicebot/tests)
 set -e
-echo "[local] All done."
+if [[ "$TESTS_CODE" == "200" || "$TESTS_CODE" == "302" ]]; then
+  say remote "Smoke OK: /voicebot/tests -> HTTP ${TESTS_CODE}"
+else
+  say remote "Smoke FAIL: /voicebot/tests -> HTTP ${TESTS_CODE}"
+fi
+
+say remote "Done."
+REMOTE
+fi
+
+say local "Deployment finished."
