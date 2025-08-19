@@ -1,0 +1,37 @@
+1) Start (or restart) the API container
+# from repo root (where docker-compose.yml lives)
+docker compose up -d api
+
+# confirm it’s running + port mapped
+docker ps --filter name=voicebot_api
+
+2) Check it answers locally
+curl -v http://127.0.0.1:8000/
+# expect: {"ok":true,"service":"voicebot_api"}
+
+
+If it’s empty or fails:
+
+docker logs -n 200 voicebot_api
+# if it crashed on import/model load, we’ll see the stack here
+
+3) Try the streaming endpoint with verbose curl
+curl -v -X POST http://127.0.0.1:8000/chat-voice \
+  -F 'text=Say hi with energy' --output /tmp/reply.wav
+file /tmp/reply.wav
+
+
+If it doesn’t create the file, note the HTTP status in -v output and paste any error from docker logs.
+
+4) Through Laravel
+curl -v -X POST http://127.0.0.1/api/voicebot/chat-voice \
+  -F 'text=Hello from Laravel' --output /tmp/reply_laravel.wav
+file /tmp/reply_laravel.wav
+
+5) Then the browser
+
+Once steps 2–4 work, the browser should be fine:
+
+Open https://voicebot.tv.digital/voicebot/tests
+
+Click “Chat → Voice (play)” (the new button on that page) and you should hear the response.
