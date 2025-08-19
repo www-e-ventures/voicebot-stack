@@ -109,6 +109,25 @@
             } catch (e) { out(String(e), false); }
         });
 
+
+        document.getElementById('btnChatVoice').addEventListener('click', async () => {
+            const text = document.getElementById('chatText').value || 'Say hi in one sentence';
+            const fd = new FormData(); fd.append('text', text); fd.append('history', '[]');
+            const r = await fetch('/api/voicebot/chat-voice', { method: 'POST', body: fd, credentials: 'same-origin' });
+            if (!r.ok) { out(await r.text(), false); return; }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.onended = () => URL.revokeObjectURL(url);
+            audio.play();
+            // If you want the reply text too, you can also return a small JSON
+            out({ ok: true, info: 'Playing voice reply' });
+        });
+
+
+
+
+
         // ---------- 🎤 Press & hold to record ----------
         const holdBtn = document.getElementById('btnHold');
         let mediaRecorder, chunks = [], stopTimer, stream;

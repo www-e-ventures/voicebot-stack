@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 import numpy as np
 import soundfile as sf
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 
@@ -156,6 +156,26 @@ async def tts(text: str = Form(...)):
 
     return StreamingResponse(wav_stream(), media_type="audio/wav")
 
+@app.post("/chat-voice")
+async def chat_voice(text: str = Form(...), history: Optional[str] = Form(None)):
+    # 1) get the text reply first
+    try:
+        history_json = json.loads(history) if history else []
+    except Exception:
+        history_json = []
+    reply = generate_reply(text, history_json)
+
+    # 2) stream that reply as WAV (Piper)
+    sample_rate = 22050
+    def wav_stream():
+        yield _wav_header(sample_rate)
+        for chunk in synth_stream(reply):
+            if chunk:
+                yield chunk
+
+    # Optional: include the text reply in a header so the client can show it
+    headers = {"X-Reply-Text": reply}
+    return StreamingResponse(wav_stream(), media_type="audio/wav", headers=headers)
 
 # Simple test page
 @app.get("/demo")
