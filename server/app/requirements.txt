@@ -20,4 +20,7 @@ openai==1.43.0
 # Embeddings (optional future RAG)
 sentence-transformers==3.0.1
 python-multipart==0.0.12
-torch>=2.0.0
+# --- Voice cloning (Coqui TTS + CPU Torch) ---
+TTS==0.22.0
+torch==2.3.1
+torchaudio==2.3.1
