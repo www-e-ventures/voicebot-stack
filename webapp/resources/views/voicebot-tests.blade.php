@@ -1,4 +1,4 @@
-<!--- webapp/resources/views/voicebot-tests.blade.php !-->
+<!-- webapp/resources/views/voicebot-tests.blade.php -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -24,6 +24,7 @@
 <body>
 <h1>Voicebot Tests <span id="httpsBadge" class="pill">http</span></h1>
 
+<!-- Core API tests -->
 <div class="card">
     <div class="row">
         <button id="btnHealth" class="primary">1) Health</button>
@@ -40,6 +41,24 @@
     <div class="row">
         <button id="btnHold" class="warning">🎤 Press & hold to record</button>
         <span id="recHint" style="align-self:center;color:#64748b">Stops on release or after 12s</span>
+    </div>
+</div>
+
+<!-- Voice responses (Piper + Cloned) & speaker management -->
+<div class="card">
+    <strong>Voice responses & speaker management</strong>
+    <div class="row">
+        <button id="btnChatVoice">Speak (Piper)</button>
+
+        <input id="speakerId" type="text" placeholder="speaker id (e.g. alice)" style="width:220px;padding:10px;border:1px solid #e5e7eb;border-radius:8px"/>
+        <input id="speakerFile" type="file" accept="audio/*"/>
+        <button id="btnSpeakerUpload">Upload voice</button>
+        <button id="btnRefreshSpeakers">Refresh speakers</button>
+
+        <select id="speakerSelect" style="padding:10px;border:1px solid #e5e7eb;border-radius:8px">
+            <option value="">-- choose speaker --</option>
+        </select>
+        <button id="btnChatVoiceCloned" class="primary">Speak (cloned)</button>
     </div>
 </div>
 
@@ -110,43 +129,95 @@
             } catch (e) { out(String(e), false); }
         });
 
-
+        // ---------- Speak (Piper) ----------
         document.getElementById('btnChatVoice').addEventListener('click', async () => {
             const text = document.getElementById('chatText').value || 'Say hi in one sentence';
             const fd = new FormData(); fd.append('text', text); fd.append('history', '[]');
-            const r = await fetch('/api/voicebot/chat-voice', { method: 'POST', body: fd, credentials: 'same-origin' });
-            if (!r.ok) { out(await r.text(), false); return; }
-            const blob = await r.blob();
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audio.onended = () => URL.revokeObjectURL(url);
-            audio.play();
-            // If you want the reply text too, you can also return a small JSON
-            out({ ok: true, info: 'Playing voice reply' });
+            try {
+                const r = await fetch('/api/voicebot/chat-voice', { method: 'POST', body: fd, credentials: 'same-origin' });
+                if (!r.ok) { out(await r.text(), false); return; }
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                audio.onended = () => URL.revokeObjectURL(url);
+                audio.play();
+                out({ ok: true, info: 'Playing voice reply (Piper)' });
+            } catch (e) { out(String(e), false); }
         });
 
+        // ---------- Speaker management ----------
+        async function refreshSpeakers() {
+            try {
+                const r = await fetch('/api/voicebot/speaker/list', { credentials: 'same-origin' });
+                const data = await r.json();
+                const sel = document.getElementById('speakerSelect');
+                sel.innerHTML = '<option value="">-- choose speaker --</option>';
+                (data.speakers || []).forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.speaker_id; opt.textContent = s.speaker_id;
+                    sel.appendChild(opt);
+                });
+                out({ ok:true, speakers: data.speakers || [] });
+            } catch (e) { out(String(e), false); }
+        }
+        document.getElementById('btnRefreshSpeakers').addEventListener('click', refreshSpeakers);
+        // auto-refresh on load
+        refreshSpeakers();
 
+        document.getElementById('btnSpeakerUpload').addEventListener('click', async () => {
+            const id = document.getElementById('speakerId').value.trim();
+            const f = document.getElementById('speakerFile').files?.[0];
+            if (!id || !f) return out('Provide speaker id and pick a file', false);
+            try {
+                const fd = new FormData();
+                fd.append('speaker_id', id);
+                fd.append('file', f, f.name);
+                const r = await fetch('/api/voicebot/speaker/upload', { method: 'POST', body: fd, credentials: 'same-origin' });
+                out(await r.json(), r.ok);
+                if (r.ok) refreshSpeakers();
+            } catch (e) { out(String(e), false); }
+        });
 
+        // ---------- Speak (cloned) ----------
+        document.getElementById('btnChatVoiceCloned').addEventListener('click', async () => {
+            const sel = document.getElementById('speakerSelect');
+            const speaker_id = sel.value || document.getElementById('speakerId').value.trim();
+            if (!speaker_id) return out('Choose or type a speaker id', false);
 
+            const text = document.getElementById('chatText').value || 'Say hi in one sentence';
+            const fd = new FormData();
+            fd.append('speaker_id', speaker_id);
+            fd.append('text', text);
+            fd.append('history', '[]');
+
+            try {
+                const r = await fetch('/api/voicebot/chat-voice-cloned', { method: 'POST', body: fd, credentials: 'same-origin' });
+                if (!r.ok) { out(await r.text(), false); return; }
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                audio.onended = () => URL.revokeObjectURL(url);
+                audio.play();
+                out({ ok:true, info:`Playing cloned voice for "${speaker_id}"` });
+            } catch (e) { out(String(e), false); }
+        });
 
         // ---------- 🎤 Press & hold to record ----------
         const holdBtn = document.getElementById('btnHold');
         let mediaRecorder, chunks = [], stopTimer, stream;
 
-        // Resample Float32 mono buffer to target sampleRate (linear)
+        // Resample Float32 mono buffer to 16k (linear)
         function resampleFloat32Mono(src, srcRate, dstRate) {
             if (srcRate === dstRate) return src;
             const ratio = dstRate / srcRate;
             const dstLength = Math.max(1, Math.round(src.length * ratio));
             const dst = new Float32Array(dstLength);
-            let pos = 0;
             for (let i = 0; i < dstLength; i++) {
                 const s = i / ratio;
                 const i0 = Math.floor(s);
                 const i1 = Math.min(i0 + 1, src.length - 1);
                 const t = s - i0;
                 dst[i] = (1 - t) * src[i0] + t * src[i1];
-                pos += ratio;
             }
             return dst;
         }
@@ -160,57 +231,33 @@
             }
             return out;
         }
-
         function writeWavPCM16(samples, sampleRate) {
             const headerSize = 44;
             const dataSize = samples.length * 2;
             const buf = new ArrayBuffer(headerSize + dataSize);
             const view = new DataView(buf);
-
-            function setU32(off, val) { view.setUint32(off, val, true); }
-            function setU16(off, val) { view.setUint16(off, val, true); }
-
-            // RIFF header
-            setU32(0, 0x46464952); // "RIFF"
-            setU32(4, 36 + dataSize);
-            setU32(8, 0x45564157); // "WAVE"
-            // fmt chunk
-            setU32(12, 0x20746d66); // "fmt "
-            setU32(16, 16);
-            setU16(20, 1);          // PCM
-            setU16(22, 1);          // mono
-            setU32(24, sampleRate);
-            setU32(28, sampleRate * 2); // byteRate = sr * channels * bytesPerSample
-            setU16(32, 2);          // block align
-            setU16(34, 16);         // bits per sample
-            // data chunk
-            setU32(36, 0x61746164); // "data"
-            setU32(40, dataSize);
-
-            // PCM data
-            const out = new Int16Array(buf, headerSize);
-            out.set(samples);
-
-            return new Blob([buf], { type: 'audio/wav' });
+            const setU32 = (o,v)=>view.setUint32(o,v,true);
+            const setU16 = (o,v)=>view.setUint16(o,v,true);
+            setU32(0, 0x46464952); setU32(4, 36 + dataSize); setU32(8, 0x45564157);
+            setU32(12,0x20746d66); setU32(16,16); setU16(20,1); setU16(22,1);
+            setU32(24, sampleRate); setU32(28, sampleRate*2); setU16(32,2); setU16(34,16);
+            setU32(36,0x61746164); setU32(40,dataSize);
+            new Int16Array(buf, headerSize).set(samples);
+            return new Blob([buf], { type:'audio/wav' });
         }
-
         async function blobToWav16kMono(blob) {
             const ab = await blob.arrayBuffer();
             const ac = new (window.AudioContext || window.webkitAudioContext)();
             const audioBuf = await ac.decodeAudioData(ab);
-
-            // mix down to mono
             let mono;
-            if (audioBuf.numberOfChannels === 1) {
-                mono = audioBuf.getChannelData(0);
-            } else {
+            if (audioBuf.numberOfChannels === 1) mono = audioBuf.getChannelData(0);
+            else {
                 const ch0 = audioBuf.getChannelData(0);
                 const ch1 = audioBuf.getChannelData(1);
                 const len = Math.min(ch0.length, ch1.length);
                 mono = new Float32Array(len);
                 for (let i = 0; i < len; i++) mono[i] = (ch0[i] + ch1[i]) * 0.5;
             }
-
             const resampled = resampleFloat32Mono(mono, audioBuf.sampleRate, 16000);
             const pcm16 = floatTo16BitPCM(resampled);
             return writeWavPCM16(pcm16, 16000);
@@ -230,13 +277,11 @@
                 mediaRecorder.onstop = async () => {
                     try {
                         const mixed = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-                        //Convert to WAV 16k mono in-browser
-                        const wavBlob = await blobToWav16kMono(mixed);
+                        const wavBlob = await blobToWav16kMono(mixed); // server expects WAV 16k mono
                         const fd = new FormData();
-                        fd.append('file', wavBlob, 'recording.wav'); // server expects WAV
+                        fd.append('file', wavBlob, 'recording.wav');
                         const r = await fetch('/api/voicebot/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
-                        const data = await asJSON(r);
-                        out(data, r.ok);
+                        out(await asJSON(r), r.ok);
                     } catch (e) {
                         out(String(e), false);
                     } finally {
@@ -246,10 +291,8 @@
                 mediaRecorder.start();
                 holdBtn.textContent = '● Recording… release to stop';
                 holdBtn.classList.add('recording');
-                stopTimer = setTimeout(stopRec, 12000); // safety stop
-            } catch (e) {
-                out('Mic error: ' + String(e), false);
-            }
+                stopTimer = setTimeout(stopRec, 12000);
+            } catch (e) { out('Mic error: ' + String(e), false); }
         };
 
         const stopRec = () => {
@@ -263,6 +306,7 @@
         holdBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); startRec(); });
         ['pointerup','pointerleave','pointercancel'].forEach(evt => holdBtn.addEventListener(evt, stopRec));
         window.addEventListener('keydown', (e) => { if (e.key === 'Escape') stopRec(); });
+
     })();
 </script>
 </body>
