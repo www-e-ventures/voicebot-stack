@@ -114,7 +114,7 @@ class VoicebotController extends Controller
         }
     }
 
-    public function chatVoice(Request $req)
+    public function LEGACYchatVoice(Request $req)
     {
         $api = rtrim(env('VOICEBOT_API_URL','http://localhost:8000'), '/');
         $resp = Http::asForm()->stream('POST', "{$api}/chat-voice", [
@@ -135,6 +135,69 @@ class VoicebotController extends Controller
             'Cache-Control' => 'no-cache, private',
         ]);
     }
+
+    public function chatVoice(Request $req)
+    {
+        $api = rtrim(config('services.voicebot.api_url', env('VOICEBOT_API_URL', 'http://127.0.0.1:8000')), '/');
+
+        $text = (string) $req->input('text', '');
+        $history = (string) $req->input('history', '[]');
+
+        if ($text === '') {
+            return response()->json(['error' => 'text is required'], 400);
+        }
+
+        try {
+            // Use Guzzle directly for true streaming passthrough
+            $client = new \GuzzleHttp\Client([
+                'base_uri' => $api,
+                'timeout'  => 300,
+            ]);
+
+            $upstream = $client->request('POST', '/chat-voice', [
+                'headers'  => ['Accept' => 'audio/wav'],
+                'stream'   => true,
+                'multipart'=> [
+                    ['name' => 'text',    'contents' => $text],
+                    ['name' => 'history', 'contents' => $history],
+                ],
+            ]);
+
+            $status  = $upstream->getStatusCode();
+            $headers = [
+                'Content-Type'        => 'audio/wav',
+                'Content-Disposition' => 'inline; filename="chat-voice.wav"',
+                'Cache-Control'       => 'no-cache, private',
+            ];
+
+            // Optionally surface the text reply header from FastAPI for the UI
+            if ($upstream->hasHeader('X-Reply-Text')) {
+                $headers['X-Reply-Text'] = $upstream->getHeaderLine('X-Reply-Text');
+            }
+
+            $body = $upstream->getBody(); // Psr\Http\Message\StreamInterface
+
+            return response()->stream(function () use ($body) {
+                while (!$body->eof()) {
+                    echo $body->read(8192);
+                    // flush output buffers so the client starts receiving audio immediately
+                    if (function_exists('fastcgi_finish_request')) {
+                        // on FPM, flush without blocking PHP
+                        @ob_flush(); @flush();
+                    } else {
+                        @ob_flush(); @flush();
+                    }
+                }
+            }, $status, $headers);
+
+        } catch (\Throwable $e) {
+            return response()->json(['error' => $e->getMessage()], 502);
+        }
+    }
+
+
+
+
 
     public function chatVoiceCloned(Request $req)
     {
