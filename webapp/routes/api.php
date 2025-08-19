@@ -9,3 +9,8 @@ Route::post('/voicebot/tts', [VoicebotController::class, 'tts']);
 Route::post('/voicebot/transcribe', [VoicebotController::class, 'transcribe']);
 
 Route::post('/voicebot/chat-voice', [VoicebotController::class, 'chatVoice']);
+Route::post('/voicebot/chat-voice-cloned', [VoicebotController::class, 'chatVoiceCloned']);
+
+Route::post('/voicebot/speaker/upload', [VoicebotController::class, 'speakerUpload']);
+Route::get('/voicebot/speaker/list', [VoicebotController::class, 'speakerList']);
+Route::delete('/voicebot/speaker/{speaker_id}', [VoicebotController::class, 'speakerDelete']);

@@ -14,12 +14,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
-
+from app.tts_xtts import synth_wav_xtts_to_bytes
 from app.stt import transcribe_wav
 from app.textgen import generate_reply
 from app.tts import synth_stream
 
 load_dotenv()
+SPEAKERS_DIR = Path(os.getenv("SPEAKERS_DIR", "/opt/chatbot/data/speakers"))  # per-user voice data
 
 app = FastAPI(title="Local-First Voice Chatbot")
 
@@ -176,6 +177,88 @@ async def chat_voice(text: str = Form(...), history: Optional[str] = Form(None))
     # Optional: include the text reply in a header so the client can show it
     headers = {"X-Reply-Text": reply}
     return StreamingResponse(wav_stream(), media_type="audio/wav", headers=headers)
+
+# --- add near top ---
+from app.tts_xtts import synth_wav_xtts_to_bytes
+
+SPEAKERS_DIR = Path(os.getenv("SPEAKERS_DIR", "/opt/chatbot/data/speakers"))  # per-user voice data
+
+# ensure speakers dir
+SPEAKERS_DIR.mkdir(parents=True, exist_ok=True)
+
+# --- add below your /chat-voice ---
+@app.post("/chat-voice-cloned")
+async def chat_voice_cloned(
+    text: str = Form(...),
+    speaker_id: str = Form(...),
+    history: Optional[str] = Form(None),
+):
+    # 1) text reply
+    try:
+        history_json = json.loads(history) if history else []
+    except Exception:
+        history_json = []
+    reply = generate_reply(text, history_json)
+
+    # 2) find user's reference WAV
+    spath = SPEAKERS_DIR / speaker_id / "sample.wav"
+    if not spath.exists():
+        raise HTTPException(404, f"Speaker {speaker_id} not found")
+
+    # 3) make cloned voice WAV (one-shot, we stream that whole blob)
+    wav_bytes = synth_wav_xtts_to_bytes(reply, str(spath))
+    return Response(content=wav_bytes, media_type="audio/wav", headers={"X-Reply-Text": reply})
+
+
+# --- SPEAKER MGMT: upload/list/delete ---
+
+@app.post("/speaker/upload")
+async def speaker_upload(speaker_id: str = Form(...), file: UploadFile = File(...)):
+    """
+    Accept an audio file (wav/mp3/ogg/webm). We decode→mono float32, resample to 16k,
+    and re-encode as PCM WAV to {SPEAKERS_DIR}/{speaker_id}/sample.wav
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+
+    # decode to float32 mono
+    try:
+        audio, sr = _read_audio_float32(data)
+        audio, sr = _resample_if_needed(audio, sr, 16000)
+    except Exception as e:
+        raise HTTPException(400, f"Decode failed: {type(e).__name__}: {e}")
+
+    # write WAV
+    spath = SPEAKERS_DIR / speaker_id
+    spath.mkdir(parents=True, exist_ok=True)
+    out_wav = spath / "sample.wav"
+
+    import soundfile as sf
+    sf.write(out_wav, audio, 16000, subtype="PCM_16")
+
+    return {"ok": True, "speaker_id": speaker_id, "path": str(out_wav)}
+
+@app.get("/speaker/list")
+async def speaker_list():
+    res = []
+    for child in SPEAKERS_DIR.glob("*"):
+        if child.is_dir() and (child / "sample.wav").exists():
+            res.append({"speaker_id": child.name})
+    return {"speakers": sorted(res, key=lambda x: x["speaker_id"])}
+
+@app.delete("/speaker/{speaker_id}")
+async def speaker_delete(speaker_id: str):
+    spath = SPEAKERS_DIR / speaker_id
+    if not spath.exists():
+        raise HTTPException(404, "not found")
+    import shutil
+    shutil.rmtree(spath, ignore_errors=True)
+    return {"ok": True}
+
+
+
+
 
 # Simple test page
 @app.get("/demo")

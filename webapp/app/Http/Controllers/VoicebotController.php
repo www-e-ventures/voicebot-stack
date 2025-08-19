@@ -136,5 +136,67 @@ class VoicebotController extends Controller
         ]);
     }
 
+    public function chatVoiceCloned(Request $req)
+    {
+        $speaker = (string) $req->input('speaker_id', '');
+        $text    = (string) $req->input('text', '');
+        $history = (string) $req->input('history', '[]');
+
+        if ($speaker === '' || $text === '') {
+            return response()->json(['error' => 'speaker_id and text are required'], 400);
+        }
+
+        $api = rtrim(config('services.voicebot.api_url', env('VOICEBOT_API_URL', 'http://127.0.0.1:8000')), '/');
+        $resp = Http::asForm()->timeout(180)->post("{$api}/chat-voice-cloned", compact('text','speaker','history'));
+
+        if (!$resp->successful()) {
+            return response()->json(['error' => 'backend error', 'status' => $resp->status(), 'body' => $resp->body()], $resp->status());
+        }
+
+        $body = $resp->body();
+        return response($body, 200)
+            ->header('Content-Type', 'audio/wav')
+            ->header('Content-Disposition', 'inline; filename="chat-voice-cloned.wav"');
+    }
+
+    public function speakerUpload(Request $req)
+    {
+        if (!$req->hasFile('file')) {
+            return response()->json(['error' => 'file is required'], 400);
+        }
+        $speaker_id = (string) $req->input('speaker_id', '');
+        if ($speaker_id === '') {
+            return response()->json(['error' => 'speaker_id is required'], 400);
+        }
+
+        $file = $req->file('file');
+        if (!$file->isValid()) {
+            return response()->json(['error' => 'invalid upload'], 400);
+        }
+
+        $api = rtrim(config('services.voicebot.api_url', env('VOICEBOT_API_URL', 'http://127.0.0.1:8000')), '/');
+        $resp = Http::asMultipart()->timeout(180)->post("{$api}/speaker/upload", [
+            ['name' => 'speaker_id', 'contents' => $speaker_id],
+            ['name' => 'file', 'contents' => fopen($file->getRealPath(), 'r'), 'filename' => $file->getClientOriginalName()],
+        ]);
+
+        return response()->json($resp->json(), $resp->status());
+    }
+
+    public function speakerList()
+    {
+        $api = rtrim(config('services.voicebot.api_url', env('VOICEBOT_API_URL', 'http://127.0.0.1:8000')), '/');
+        $resp = Http::timeout(30)->get("{$api}/speaker/list");
+        return response()->json($resp->json(), $resp->status());
+    }
+
+    public function speakerDelete($speaker_id)
+    {
+        $api = rtrim(config('services.voicebot.api_url', env('VOICEBOT_API_URL', 'http://127.0.0.1:8000')), '/');
+        $resp = Http::timeout(60)->delete("{$api}/speaker/{$speaker_id}");
+        return response()->json($resp->json(), $resp->status());
+    }
+
+
 
 }
