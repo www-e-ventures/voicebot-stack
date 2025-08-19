@@ -214,4 +214,14 @@ say "Done."
 REMOTE
 
 echo
+say "Post-deploy smoke test (HTTPS)…"
+set +e
+# curl with -k to ignore TLS self-signed issues (remove -k if prod cert is trusted)
+TESTS_CODE=$(curl -sk -o /dev/null -w "%{http_code}" https://voicebot.tv.digital/voicebot/tests)
+if [[ "$TESTS_CODE" == "200" || "$TESTS_CODE" == "302" ]]; then
+  say "Smoke OK: /voicebot/tests -> HTTP ${TESTS_CODE}"
+else
+  say "Smoke FAIL: /voicebot/tests -> HTTP ${TESTS_CODE}"
+fi
+set -e
 echo "[local] All done."
